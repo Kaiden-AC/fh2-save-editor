@@ -181,10 +181,11 @@ Binary object dictionary using absolute offsets → treated as read-only.
 ## AI usage disclaimer
 
 This project was created with the use of **DeepSeek V4.1 Flash**, an AI coding
-assistant. DeepSeek V4.1 Flash produced the initial implementation, documentation, and
-packaging; the human maintainer reviewed and tested the result and is responsible for
-the published code. AI-generated code can still contain errors, so back up your saves
-and use the tool at your own risk. See [`AI_USAGE.md`](AI_USAGE.md) for details.
+assistant. Basic features (such as editing credits) have been tested, but the project
+has not been thoroughly tested. It should work, but no guarantee is made. The software
+is provided under the MIT License, "as is", without warranty of any kind, and the author
+accepts no liability for any damage or loss arising from its use. See
+[`AI_USAGE.md`](AI_USAGE.md) and [`LICENSE`](LICENSE) for details.
 
 ## License
 
