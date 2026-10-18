@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Arch Linux / makepkg build output
+pkg/
+src/
+build-*/
+*.pkg.tar.zst
+*.pkg.tar.xz
+*.tar.gz
+*.tar.xz
+*.tar.zst
+
+# Virtual environments and local tooling
+.venv/
+venv/
+.idea/
+.vscode/

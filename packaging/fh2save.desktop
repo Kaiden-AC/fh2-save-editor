@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=FH2 Save Editor
+GenericName=Forza Horizon 2 Save Editor
+Comment=View and modify Forza Horizon 2 (Xbox One) save files
+Exec=fh2save
+Terminal=true
+Categories=Utility;Game;
+Keywords=forza;horizon;save;editor;xbox;

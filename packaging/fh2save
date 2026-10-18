@@ -1,0 +1,3 @@
+#!/bin/sh
+# Launcher for the FH2 Save Editor (installed package).
+PYTHONPATH="/usr/lib/fh2save${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m fh2save "$@"
