@@ -529,21 +529,31 @@ class QuickActionsView(ListView):
 
     def _items(self):
         return [
+            ("MAX FH3 progression (everything below)",
+             lambda a: a.message(actions.max_fh3_progression(a.doc))),
             ("Set credits / money", lambda a: a.edit_credits()),
-            ("Set XP / level", lambda a: a.edit_xp()),
+            ("Set XP", lambda a: a.edit_xp()),
+            ("Set driver level", lambda a: a.edit_level()),
             ("Set skill points (total + unspent)", lambda a: a.edit_skills()),
             ("Set skill tokens", lambda a: a.edit_tokens()),
-            ("MAX credits (set 2,000,000,000)",
-             lambda a: (actions.set_credits(a.doc, 2000000000), a.message("Credits maxed"))),
-            ("Unlock all speed traps / danger signs",
+            ("MAX credits (set 999,999,999)",
+             lambda a: (actions.set_credits(a.doc, actions.FH3_MAX_CREDITS),
+                        a.message("Credits maxed"))),
+            ("Complete all speed traps",
              lambda a: a.message(actions.unlock_all_speed_traps(a.doc))),
-            ("Unlock all speed zones / drift zones",
+            ("Complete all speed zones",
              lambda a: a.message(actions.unlock_all_speed_zones(a.doc))),
+            ("Complete all danger signs",
+             lambda a: a.message(actions.complete_all_danger_signs(a.doc))),
+            ("Complete all drift zones",
+             lambda a: a.message(actions.complete_all_drift_zones(a.doc))),
+            ("Complete all PR stunts (all four types)",
+             lambda a: a.message(actions.complete_all_pr_stunts(a.doc))),
             ("Unlock all reward boards",
              lambda a: a.message(actions.unlock_all_reward_boards(a.doc))),
             ("Activate all landmarks",
              lambda a: a.message(actions.activate_all_landmarks(a.doc))),
-            ("Activate/build all festival sites",
+            ("Build all festival sites at level 5 + max fans",
              lambda a: a.message(actions.activate_all_festival_sites(a.doc))),
             ("Discover all bucket-list slots",
              lambda a: a.message(actions.discover_all_bucket_list_slots(a.doc))),
@@ -551,7 +561,7 @@ class QuickActionsView(ListView):
              lambda a: a.message(actions.mark_all_dialogue_seen(a.doc))),
             ("Complete all bucket-list challenges",
              lambda a: a.message(actions.complete_all_bucket_list(a.doc))),
-            ("Set all race results to 1st place",
+            ("Complete all career events + races (experimental)",
              lambda a: a.message(actions.complete_all_race_results(a.doc))),
             ("Unlock/restore all barn finds (State=2)",
              lambda a: a.message(actions.unlock_all_barn_finds(a.doc, 2))),
@@ -664,6 +674,14 @@ class App:
             cur = str(p.get())
         self.prompt("Set XP", cur,
                     lambda a, t: a.message(actions.set_xp(a.doc, int(t, 0))))
+
+    def edit_level(self):
+        cur = "1"
+        p = self.doc.profile.find("Level") if self.doc.profile else None
+        if p:
+            cur = str(p.get())
+        self.prompt("Set driver level", cur,
+                    lambda a, t: a.message(actions.set_level(a.doc, int(t, 0))))
 
     def edit_skills(self):
         self.prompt("Set skill points total", "0",

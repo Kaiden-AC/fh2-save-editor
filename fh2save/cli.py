@@ -118,6 +118,8 @@ def cmd_set(args):
         msg = actions.set_credits(doc, int(val, 0))
     elif key == "xp":
         msg = actions.set_xp(doc, int(val, 0))
+    elif key == "level":
+        msg = actions.set_level(doc, int(val, 0))
     elif key == "skillpoints":
         msg = actions.set_skill_points(doc, int(val, 0))
     elif key == "skilltokens":
@@ -125,16 +127,19 @@ def cmd_set(args):
     elif key == "versionflags":
         msg = actions.set_version_flags(doc, int(val, 0))
     else:
-        print("unknown key %s (try: credits, xp, skillpoints, skilltokens, versionflags)" % key)
+        print("unknown key %s (try: credits, xp, level, skillpoints, skilltokens, versionflags)" % key)
         return 1
     print(msg)
     return _finish(doc, args)
 
 
 NAMED_ACTIONS = {
-    "maxmoney": lambda d: actions.set_credits(d, 2000000000),
+    "maxmoney": lambda d: actions.set_credits(d, actions.FH3_MAX_CREDITS),
     "speedtraps": actions.unlock_all_speed_traps,
     "speedzones": actions.unlock_all_speed_zones,
+    "dangersigns": actions.complete_all_danger_signs,
+    "driftzones": actions.complete_all_drift_zones,
+    "prstunts": actions.complete_all_pr_stunts,
     "boards": actions.unlock_all_reward_boards,
     "landmarks": actions.activate_all_landmarks,
     "festivals": actions.activate_all_festival_sites,
@@ -142,6 +147,7 @@ NAMED_ACTIONS = {
     "dialogue": actions.mark_all_dialogue_seen,
     "bucketlist": actions.complete_all_bucket_list,
     "raceresults": actions.complete_all_race_results,
+    "maxprogression": actions.max_fh3_progression,
     "barnfinds": lambda d: actions.unlock_all_barn_finds(d, 2),
     "stocktuning": actions.set_all_garage_tuning_stock,
 }

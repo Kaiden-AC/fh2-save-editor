@@ -27,7 +27,7 @@ A ready-to-install Arch/CachyOS package is built from this tree:
 
 ```sh
 ./build-package.sh          # produces fh2save-<version>-<pkgrel>-any.pkg.tar.zst
-sudo pacman -U fh2save-1.1.0-1-any.pkg.tar.zst
+sudo pacman -U fh2save-1.1.1-1-any.pkg.tar.zst
 ```
 
 Then run it from anywhere:
@@ -91,12 +91,22 @@ Sections on the main menu:
 
 ### Quick actions
 
-Set credits, set XP/level, set skill points, set skill tokens, **MAX money**, unlock
-all speed traps / danger signs, unlock all speed zones / drift zones, unlock all reward
-boards, activate all landmarks, activate/build all festival sites, discover all
-bucket-list slots, mark all dialogue seen/played, complete all bucket-list challenges,
-set all race results to 1st, unlock/restore all barn finds, **add a car to the garage
-(clone)**, and reset all garage tuning to stock.
+* **MAX FH3 progression** — one entry that applies the full preset below.
+* Set credits / money, XP, driver level, skill points and skill tokens; **MAX money**.
+* Complete all **speed traps**, **speed zones**, **danger signs** and **drift zones**,
+  or all PR stunts in one go.  FH3 stores these as `CameraState`,
+  `DangerSignState` and `DriftZoneState` objects; the action sets `Completed` and a
+  high `PersonalBest`.
+* Unlock all reward boards and landmarks.
+* Build every festival site at **level 5** and raise fans to 10,000,000 (FH3).
+* Discover or complete all bucket-list challenges (FH3 IDs 1–42 are inserted because
+  the table starts empty).
+* Mark all dialogue seen/played.
+* Complete all career events and races.  FH3 does not store the static event catalogue,
+  so this action inserts an **experimental** ID sweep (1–2000) into
+  `Career_EventResults` and `Career_RaceResults`; undefined IDs are ignored by the game.
+* Unlock/restore all barn finds, **add a car to the garage (clone)**, and reset all
+  garage tuning to stock.
 
 Actions are format-aware: the same menu works on FH2 and FH3, using the correct object
 types and tables for each game.
@@ -114,6 +124,7 @@ fh2save dump PlayerDatabase        # alias: Database
 fh2save dump BinarySaveState
 fh2save set credits 5000000        # set a well-known value
 fh2save set xp 999999
+fh2save set level 999
 fh2save set skillpoints 100000
 fh2save set skilltokens 50
 fh2save set versionflags 4
@@ -126,9 +137,10 @@ Useful flags: `--root DIR`, `--save N`, `--rev 0x140`, `--search`, and `--dry-ru
 on the mutating subcommands (shows what would change without writing). The global
 options may be placed before *or* after the subcommand.
 
-Available `action` names: `maxmoney`, `speedtraps`, `speedzones`, `boards`,
-`landmarks`, `festivals`, `bucketslots`, `dialogue`, `bucketlist`, `raceresults`,
-`barnfinds`, `stocktuning`.
+Available `action` names: `maxmoney`, `speedtraps`, `speedzones`, `dangersigns`,
+`driftzones`, `prstunts`, `boards`, `landmarks`, `festivals`, `bucketslots`,
+`dialogue`, `bucketlist`, `raceresults`, `maxprogression`, `barnfinds`,
+`stocktuning`.
 
 `selftest` on an FH3 save checks: commit hashes, TFIT decrypt→encrypt byte equality,
 the four ProfileData sections, BXML round-trip, VersionFlags, the SQLite database and

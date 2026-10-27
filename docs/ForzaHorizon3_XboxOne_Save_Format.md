@@ -222,6 +222,32 @@ games.  FH3 tables include `Career_Garage`, `BarnFinds`, `BucketListProgress`,
 `Career_RaceResults`, `Career_PurchasedParts`, `ChangeTracking`, and various
 progress/unlock tables.
 
+### 2.5 Progression fields used by the quick actions
+
+FH3 splits progression between the BXML save state, the profile bag and SQLite:
+
+| Progress | Store | Field(s) |
+| --- | --- | --- |
+| Speed traps and speed zones | BXML `CameraState` (`speed_trap_*`, `speed_zone_*`) | `Completed`, `PersonalBest` |
+| Danger signs | BXML `DangerSignState` | `Completed`, `PersonalBest` |
+| Drift zones | BXML `DriftZoneState` | `Completed`, `PersonalBest` |
+| Reward boards | BXML `DiscountBoardSaveState` | `State = Collected` |
+| Festival sites | BXML `FestivalSiteState` | `Activated`, `Built`, `Level` (max 5) |
+| Fans | BXML `CurrencyBucket_Fans_*` | `Total` |
+| Bucket-list challenges | SQLite `BucketListProgress` | `ChallengeId` (1–42), `Completed`, `Attempted`, `Viewed` |
+| Career events | SQLite `Career_EventResults` | `EventId`, `Place`, `TargetAchieved`, `TimesCompleted` |
+| Career races | SQLite `Career_RaceResults` | `RaceId`, `Place`, `TargetAchieved`, `TimesCompleted` |
+
+`BucketListProgress`, `Career_EventResults` and `Career_RaceResults` are empty in a
+fresh or partly played save, so the editor **inserts** rows instead of updating them.
+There are 30 base-game bucket-list events plus 7 Blizzard Mountain and 5 Hot Wheels
+events (IDs 1–42).
+
+The static FH3 career-event catalogue is not stored in the save. The editor therefore
+uses an experimental ID sweep (1–2000) for `Career_EventResults`/`Career_RaceResults`;
+rows whose IDs the game does not define are ignored. This is best-effort progress, not
+a verified 100% completion table.
+
 ---
 
 ## 3. Editing and writing
