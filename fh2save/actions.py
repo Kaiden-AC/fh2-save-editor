@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 
+def _is_fh3(doc):
+    return getattr(doc, "format", "FH2") == "FH3"
+
+
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
@@ -26,32 +30,71 @@ def _profile_set(doc, name, value, occurrences=1, match_old=None):
     return n
 
 
+def _set_type_property(doc, type_name, prop_name, value):
+    if doc.savestate is None:
+        return 0
+    n = 0
+    for obj in doc.savestate.objects:
+        if getattr(obj, "type", None) == type_name and obj.set_property(prop_name, value):
+            n += 1
+    return n
+
+
+def _set_skill_state_prop(doc, prop_name, value):
+    if doc.savestate is None:
+        return 0
+    if doc.savestate.set_property("skills_save_state", prop_name, value):
+        return 1
+    return _set_type_property(doc, "SkillsState", prop_name, value)
+
+
 # --------------------------------------------------------------------------
 # Money / XP / skills
 # --------------------------------------------------------------------------
 def set_credits(doc, amount: int) -> str:
     amount = max(0, int(amount))
+    if doc.profile is None:
+        return "no ProfileData"
+    if _is_fh3(doc):
+        credits = doc.profile.find("Main/Credits") or doc.profile.find("Credits")
+        if credits is None:
+            return "FH3 credits property not found"
+        old = credits.get()
+        credits.set(amount)
+        winnings = doc.profile.find("Main/TotalWinnings")
+        if winnings is not None and winnings.get() == old:
+            winnings.set(amount)
+        return "Credits = %d" % amount
     old = None
-    credits = doc.profile.find("Credits") if doc.profile else None
+    credits = doc.profile.find("Credits")
     if credits is not None:
         old = credits.get()
         credits.set(amount)
     # keep the paired TotalWinnings in sync (the one that matched Credits)
     n_tw = 0
-    if doc.profile:
-        for p in doc.profile.props:
-            if p.name == "TotalWinnings":
-                try:
-                    if old is None or p.get() == old:
-                        p.set(amount)
-                        n_tw += 1
-                except Exception:
-                    pass
+    for p in doc.profile.props:
+        if p.name == "TotalWinnings":
+            try:
+                if old is None or p.get() == old:
+                    p.set(amount)
+                    n_tw += 1
+            except Exception:
+                pass
     return "Credits = %d (TotalWinnings updated in %d place(s))" % (amount, n_tw)
 
 
 def set_xp(doc, amount: int) -> str:
     amount = max(0, int(amount))
+    if doc.profile is None:
+        return "no ProfileData"
+    if _is_fh3(doc):
+        n = 0
+        for path in ("Main/XP", "Main/TotalXP"):
+            p = doc.profile.find(path)
+            if p is not None:
+                p.set(amount)
+                n += 1
+        return "XP / TotalXP = %d (%d field(s))" % (amount, n)
     _profile_set(doc, "XP", amount, occurrences=99)
     _profile_set(doc, "WristbandLevel", amount, occurrences=99)
     return "XP / WristbandLevel = %d" % amount
@@ -63,8 +106,12 @@ def set_skill_points(doc, total: int, unspent: int = None) -> str:
         unspent = total
     unspent = max(0, int(unspent))
     if doc.savestate is not None:
-        doc.savestate.set_property("skills", "SkillPointsTotal", total)
-        doc.savestate.set_property("skills", "UnspentSkillPointsTotal", unspent)
+        if _is_fh3(doc):
+            _set_skill_state_prop(doc, "SkillPointsTotal", str(total))
+            _set_skill_state_prop(doc, "UnspentSkillPointsTotal", str(unspent))
+        else:
+            doc.savestate.set_property("skills", "SkillPointsTotal", total)
+            doc.savestate.set_property("skills", "UnspentSkillPointsTotal", unspent)
     return "Skill points total=%d unspent=%d" % (total, unspent)
 
 
@@ -72,7 +119,10 @@ def set_skill_tokens(doc, count: int) -> str:
     count = max(0, int(count))
     _profile_set(doc, "NumSkillTokens", count, occurrences=99)
     if doc.savestate is not None:
-        doc.savestate.set_property("skills", "CurrentSkillTokensTotal", count)
+        if _is_fh3(doc):
+            _set_skill_state_prop(doc, "CurrentSkillTokensTotal", str(count))
+        else:
+            doc.savestate.set_property("skills", "CurrentSkillTokensTotal", count)
     return "Skill tokens = %d" % count
 
 
@@ -82,6 +132,9 @@ def set_skill_tokens(doc, count: int) -> str:
 def unlock_all_speed_traps(doc) -> str:
     if doc.savestate is None:
         return "no SaveState"
+    if _is_fh3(doc):
+        n = _set_type_property(doc, "DangerSignState", "Completed", "true")
+        return "Unlocked %d danger signs (speed traps)" % n
     n = 0
     for o in doc.savestate.objects:
         if o.id.startswith("speed_trap_"):
@@ -94,6 +147,9 @@ def unlock_all_speed_traps(doc) -> str:
 def unlock_all_speed_zones(doc) -> str:
     if doc.savestate is None:
         return "no SaveState"
+    if _is_fh3(doc):
+        n = _set_type_property(doc, "DriftZoneState", "Completed", "true")
+        return "Unlocked %d drift zones (speed zones)" % n
     n = 0
     for o in doc.savestate.objects:
         if o.id.startswith("speed_zone_"):
@@ -106,6 +162,9 @@ def unlock_all_speed_zones(doc) -> str:
 def unlock_all_reward_boards(doc) -> str:
     if doc.savestate is None:
         return "no SaveState"
+    if _is_fh3(doc):
+        n = _set_type_property(doc, "DiscountBoardSaveState", "State", "Collected")
+        return "Marked %d reward boards collected" % n
     n = 0
     for o in doc.savestate.objects:
         if o.id.startswith("discount_board_"):
@@ -117,6 +176,9 @@ def unlock_all_reward_boards(doc) -> str:
 def mark_all_dialogue_seen(doc) -> str:
     if doc.savestate is None:
         return "no SaveState"
+    if _is_fh3(doc):
+        n = _set_type_property(doc, "DialogueSaveState", "PlayCount", "1")
+        return "Marked %d dialogue entries as played" % n
     n = 0
     for o in doc.savestate.objects:
         if o.type == "DialogueSaveState":
@@ -125,7 +187,38 @@ def mark_all_dialogue_seen(doc) -> str:
     return "Marked %d dialogue entries seen" % n
 
 
+def activate_all_landmarks(doc) -> str:
+    if doc.savestate is None:
+        return "no SaveState"
+    n = 0
+    for o in doc.savestate.objects:
+        if getattr(o, "type", None) == "LandmarkSaveState":
+            if o.set_property("Activated", "true"):
+                n += 1
+    return "Activated %d landmarks" % n
+
+
+def activate_all_festival_sites(doc) -> str:
+    if doc.savestate is None:
+        return "no SaveState"
+    n = 0
+    for o in doc.savestate.objects:
+        if getattr(o, "type", None) == "FestivalSiteState":
+            ok = o.set_property("Activated", "true")
+            ok = o.set_property("Built", "true") or ok
+            if ok:
+                n += 1
+    return "Activated/built %d festival sites" % n
+
+
 def discover_all_bucket_list_slots(doc) -> str:
+    if _is_fh3(doc):
+        if doc.playerdb is None:
+            return "no PlayerDatabase"
+        cur = doc.playerdb.execute(
+            "UPDATE BucketListProgress SET Attempted=1, Viewed=1"
+        )
+        return "Discovered %d bucket-list slots" % cur.rowcount
     if doc.savestate is None:
         return "no SaveState"
     n = 0

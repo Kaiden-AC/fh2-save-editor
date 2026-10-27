@@ -1,18 +1,20 @@
-# FH2 Save Editor
+# Forza Save Editor (FH2 / FH3)
 
 An intuitive, dependency-free (stdlib-only) **Python curses TUI** for viewing and
-modifying **Forza Horizon 2 (Xbox One)** save files, plus a scriptable CLI.
+modifying **Forza Horizon 2** and **Forza Horizon 3** (Xbox One) save files, plus a
+scriptable CLI.
 
-It understands the Xbox One "Connected Storage" revision store, and every blob inside it:
+It understands the Xbox One "Connected Storage" revision store and the blobs inside
+it, including FH3's TFIT-encrypted `ProfileData`:
 
-| blob | support |
-|---|---|
-| `ProfileData`   | full read/write (credits, XP, stats, settings, locale) |
-| `SaveState`     | full read/write (any object property) |
-| `PlayerDatabase`| full read/write (SQLite: garage, races, unlocks, perks…) |
-| `BinarySaveState` | read-only viewer (drivatars, road bitmap, radio) |
-| `VersionFlags`  | read/write |
-| `commit`        | verified + regenerated (SHA-256) |
+| blob | FH2 | FH3 |
+|---|---|---|
+| `ProfileData`   | full read/write (credits, XP, stats, settings, locale) | full read/write (nested property bag + BXML + binary + SQLite sections) |
+| `SaveState`     | full read/write (any object property) | stored inside `ProfileData` (BXML; full read/write) |
+| `PlayerDatabase`| full read/write (SQLite: garage, races, unlocks, perks…) | stored inside `ProfileData` (SQLite; full read/write) |
+| `BinarySaveState` | read-only viewer (drivatars, road bitmap, radio) | stored inside `ProfileData` (read-only viewer) |
+| `VersionFlags`  | read/write (plain u32) | read/write (TFIT-encrypted u32) |
+| `commit`        | verified + regenerated (SHA-256) | verified + regenerated (SHA-256) |
 
 Writes always go to a **new revision folder** with a freshly hashed `commit`, so the
 previous revision is never overwritten.
@@ -25,7 +27,7 @@ A ready-to-install Arch/CachyOS package is built from this tree:
 
 ```sh
 ./build-package.sh          # produces fh2save-<version>-<pkgrel>-any.pkg.tar.zst
-sudo pacman -U fh2save-1.0.0-4-any.pkg.tar.zst
+sudo pacman -U fh2save-1.1.0-1-any.pkg.tar.zst
 ```
 
 Then run it from anywhere:
@@ -44,6 +46,9 @@ The `--root` is the folder that contains `titles/` (e.g. the folder this repo li
 If omitted it defaults to the current directory. Discovery is **literal** — only
 `<root>/titles` is inspected, so the editor never silently opens a save from a
 parent/sibling folder. To look a bit deeper, add `--search`.
+
+The editor detects the game from the save contents (FH2 `ssmc` profile magic, or an
+FH3 TFIT container with a valid header MAC). The title ID is only used as a fallback.
 
 ---
 
@@ -69,26 +74,32 @@ Esc         back one level
 
 Sections on the main menu:
 
-* **ProfileData** — every key/value record. Editable ones are marked with a space
-  (`·` = container, not directly editable). Ints, u64s, floats, bools, enums and
-  strings can all be changed. Type a value and press Enter; `Ctrl-U` clears the field.
-* **SaveState** — browse all 350+ game objects; open one to edit any of its properties
-  (world position, radio, tombola seed, reward boards, speed traps/zones, dialogue
-  flags, barn-find state, …).
+* **ProfileData** — every editable leaf in the profile. FH2 shows flat record names;
+  FH3 shows the full path (e.g. `Main/Credits`, `MiscStats/...`). Ints, u64s, floats,
+  bools, strings and vectors can all be changed. Type a value and press Enter;
+  `Ctrl-U` clears the field.
+* **SaveState** — browse every game object and open one to edit any of its properties
+  (world position, radio, tombola seed, reward boards, danger signs/drift zones,
+  dialogue flags, barn-find state, …).
 * **PlayerDatabase** — browse all SQLite tables. Open a table → open a row → edit any
   column. `c` clones a row (handy for adding cars), `d` deletes a row.
-* **BinarySaveState** — read-only report: object list, extracted gamertags.
-* **VersionFlags** — the 32-bit save schema stamp.
+* **BinarySaveState** — read-only report: object list, types and sizes.
+* **VersionFlags** — the 32-bit save schema stamp (FH3: decrypted/encrypted
+  transparently).
 * **Quick actions** — one-keystroke helpers (below).
-* **Integrity / commit** — SHA-256 verify and the pending-changes list.
+* **Integrity / commit** — SHA-256 verify, FH3 section sizes and the pending-changes list.
 
 ### Quick actions
 
-Set credits, set XP/wristband, set skill points, set skill tokens, **MAX money**,
-unlock all speed traps / speed zones / reward boards, discover all bucket-list slots,
-mark all dialogue seen, complete all bucket-list challenges, set all race results to
-1st, unlock/restore all barn finds, **add a car to the garage (clone)**, and reset all
-garage tuning to stock.
+Set credits, set XP/level, set skill points, set skill tokens, **MAX money**, unlock
+all speed traps / danger signs, unlock all speed zones / drift zones, unlock all reward
+boards, activate all landmarks, activate/build all festival sites, discover all
+bucket-list slots, mark all dialogue seen/played, complete all bucket-list challenges,
+set all race results to 1st, unlock/restore all barn finds, **add a car to the garage
+(clone)**, and reset all garage tuning to stock.
+
+Actions are format-aware: the same menu works on FH2 and FH3, using the correct object
+types and tables for each game.
 
 ---
 
@@ -96,13 +107,16 @@ garage tuning to stock.
 
 ```
 fh2save list                       # list discovered saves + revisions
-fh2save info                       # verify hashes, show blob summary
-fh2save dump ProfileData           # dump a blob (ProfileData|SaveState|PlayerDatabase|BinarySaveState)
+fh2save info                       # verify hashes, show blob/section summary
+fh2save dump ProfileData           # dump a blob
+fh2save dump SaveState
+fh2save dump PlayerDatabase        # alias: Database
+fh2save dump BinarySaveState
 fh2save set credits 5000000        # set a well-known value
 fh2save set xp 999999
 fh2save set skillpoints 100000
 fh2save set skilltokens 50
-fh2save set versionflags 6
+fh2save set versionflags 4
 fh2save action speedtraps          # run a quick action by name
 fh2save addcar 1234                # clone a garage car with a new CarId
 fh2save selftest                   # round-trip sanity checks
@@ -113,14 +127,22 @@ on the mutating subcommands (shows what would change without writing). The globa
 options may be placed before *or* after the subcommand.
 
 Available `action` names: `maxmoney`, `speedtraps`, `speedzones`, `boards`,
-`bucketslots`, `dialogue`, `bucketlist`, `raceresults`, `barnfinds`, `stocktuning`.
+`landmarks`, `festivals`, `bucketslots`, `dialogue`, `bucketlist`, `raceresults`,
+`barnfinds`, `stocktuning`.
+
+`selftest` on an FH3 save checks: commit hashes, TFIT decrypt→encrypt byte equality,
+the four ProfileData sections, BXML round-trip, VersionFlags, the SQLite database and
+the clean-tree state.
 
 ---
 
-## Format reference (what the editor relies on)
+## Format reference
 
-The full reverse-engineering write-up is in
-[`docs/ForzaHorizon2_XboxOne_Save_Format.md`](docs/ForzaHorizon2_XboxOne_Save_Format.md).
+* [`docs/ForzaHorizon2_XboxOne_Save_Format.md`](docs/ForzaHorizon2_XboxOne_Save_Format.md)
+* [`docs/ForzaHorizon3_XboxOne_Save_Format.md`](docs/ForzaHorizon3_XboxOne_Save_Format.md)
+* [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) — crypto key/table and format
+  research attribution.
+
 The short version:
 
 ### Container
@@ -134,7 +156,7 @@ titles/<TITLEID>/saves/<slot>/User_<XUID-hex>/revisions/<16-hex>/
 `commit` header is `Azimuth complete save revision v2`. Writes create the next
 `<16-hex>` folder with a full snapshot and recomputed hashes.
 
-### ProfileData
+### FH2 ProfileData
 
 ```
 "ssmc"                  magic
@@ -145,28 +167,22 @@ records..., then an opaque trailing table (preserved verbatim)
 
 Record: `u32 nameLen | name | 0x20 | u32 0 | u32 type | value[typeSize]`.
 
-| type | meaning | size |
-|---:|---|---|
-| 0x00,0x01 | bool / enum8 | 1 |
-| 0x03,0x07 | int32 | 4 |
-| 0x04 | u64 | 8 |
-| 0x09 | float32 | 4 |
-| 0x0C | wstring (u32 charCount + UTF-16LE) | variable |
-| 0x0F | container (child count) | 4 |
+### FH3 ProfileData
 
-### SaveState
+TFIT container → four sections (`profile`, `savestate`, `binary`, `database`).
+`profile` is a nested property bag; `savestate` is BXML; `binary` is a read-only
+object dictionary; `database` is bare SQLite. Full details are in the format doc.
 
-XML `ObjectDictionary` with `<Object Id= Type=>` / `<Property Name= Value=/>`.
-Edits are done in-place so CRLF, indentation and self-closing tags are preserved.
-
-### PlayerDatabase
+### FH2 PlayerDatabase
 
 SQLite 3 database prefixed with 8 bytes (`ssmc` + 4). 42 tables; the garage is
 `Career_Garage` (124 columns/car including a full physics & tuning snapshot).
+FH3 databases have no prefix; the SQLite header is auto-detected.
 
-### BinarySaveState
+### FH2 SaveState
 
-Binary object dictionary using absolute offsets → treated as read-only.
+XML `ObjectDictionary` with `<Object Id= Type=>` / `<Property Name= Value=/>`.
+Edits are done in-place so CRLF, indentation and self-closing tags are preserved.
 
 ---
 
@@ -174,9 +190,11 @@ Binary object dictionary using absolute offsets → treated as read-only.
 
 * Never writes over an existing revision; each save produces a new one.
 * `commit` hashes are recomputed on write, so `fh2save info` stays "Verify: OK".
+* An unmodified FH3 document re-encrypts to byte-identical blobs, so the editor
+  reports "clean" until you actually change something.
 * Take a backup anyway (the TUI has a **Backup** action, or copy the `revisions/`
   folder) — this is a fan-made tool with no affiliation to Turn 10 / Playground /
-  Microsoft.
+  Microsoft. Keep your original save and test on a copy first.
 
 ## AI usage disclaimer
 
@@ -189,4 +207,4 @@ accepts no liability for any damage or loss arising from its use. See
 
 ## License
 
-MIT — see `LICENSE`.
+MIT — see `LICENSE`. Copyright (c) 2026 KaidenAC.

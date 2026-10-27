@@ -13,10 +13,18 @@ import tempfile
 
 class PlayerDatabase:
     PREFIX_LEN = 8
+    SQLITE_MAGIC = b"SQLite format 3\x00"
+
+    @classmethod
+    def split_prefix(cls, raw: bytes):
+        """Return (prefix, sqlite_bytes); FH2 has 8 prefix bytes, FH3 none."""
+        at = raw.find(cls.SQLITE_MAGIC)
+        if at in (0, cls.PREFIX_LEN):
+            return raw[:at], raw[at:]
+        raise ValueError("PlayerDatabase: SQLite header not found at offset 0 or 8")
 
     def __init__(self, raw: bytes):
-        self.prefix = raw[:self.PREFIX_LEN]
-        self.db_bytes = raw[self.PREFIX_LEN:]
+        self.prefix, self.db_bytes = self.split_prefix(raw)
         self._dirty = False
         fd, self._tmp_path = tempfile.mkstemp(prefix="fh2pdb_", suffix=".sqlite")
         with os.fdopen(fd, "wb") as fh:
@@ -135,8 +143,7 @@ class PlayerDatabase:
     def mark_clean(self, raw: bytes = None) -> None:
         """Forget the dirty flag after a successful save."""
         if raw is not None:
-            self.prefix = raw[:self.PREFIX_LEN]
-            self.db_bytes = raw[self.PREFIX_LEN:]
+            self.prefix, self.db_bytes = self.split_prefix(raw)
         self._dirty = False
 
     def close(self):

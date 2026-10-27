@@ -39,14 +39,14 @@ def parse_for_type(type_tag, text):
         if t.lower() in ("0", "false", "no", "n", "off"):
             return 0
         return _to_int(t) & 0xFF
-    if type_tag in (0x03, 0x07):
+    if type_tag in (0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x11):
         return _to_int(t)
-    if type_tag == 0x04:
-        return _to_int(t)
-    if type_tag == 0x09:
+    if type_tag in (0x09, 0x0A):
         return float(t)
-    if type_tag == 0x0C:
+    if type_tag in (0x0B, 0x0C):
         return text
+    if type_tag in (0x0D, 0x0E):
+        return [float(x) for x in t.replace(",", " ").split()]
     raise ValueError("type %d not editable" % type_tag)
 
 
@@ -251,8 +251,9 @@ class MainMenu(View):
 
     def render(self, app, win, top, height, width):
         d = app.doc
-        info = "title %s   rev 0x%x   %s" % (
-            d.saveset.title_id, d.rev.number, "DIRTY" if d.is_dirty() else "clean")
+        info = "%s   title %s   rev 0x%x   %s" % (
+            d.game_name, d.saveset.title_id, d.rev.number,
+            "DIRTY" if d.is_dirty() else "clean")
         addstr(win, top, 0, clip("Save: %s   %s" % (d.saveset.user, info), width),
                curses.A_BOLD)
         items = self._items()
@@ -300,23 +301,25 @@ class ProfileView(ListView):
             return []
         out = []
         for p in props:
-            editable = p.type in (0x00, 0x01, 0x03, 0x04, 0x07, 0x09, 0x0C)
+            editable = getattr(p, "editable", p.type not in (0x0F, 0x10))
             mark = " " if editable else "\u00b7"
-            text = "%s %-34s = %s   [%s]" % (mark, p.name, p.display(), p.type_name)
+            path = getattr(p, "path", p.name)
+            text = "%s %-46s = %s   [%s]" % (mark, path, p.display(), p.type_name)
             out.append((text, p))
         return out
 
     def _select(self, app, item):
         p = item[1]
-        if p.type not in (0x00, 0x01, 0x03, 0x04, 0x07, 0x09, 0x0C):
-            app.message("%s is a container and cannot be edited" % p.name)
+        if not getattr(p, "editable", p.type not in (0x0F, 0x10)):
+            app.message("%s is a container and cannot be edited" % getattr(p, "path", p.name))
             return
-        app.prompt("Set %s [%s]" % (p.name, p.type_name), p.display(), self._set, p)
+        label = getattr(p, "path", p.name)
+        app.prompt("Set %s [%s]" % (label, p.type_name), p.display(), self._set, p)
 
     def _set(self, app, text, prop):
         try:
             prop.set(parse_for_type(prop.type, text))
-            app.message("Set %s = %s" % (prop.name, prop.display()))
+            app.message("Set %s = %s" % (getattr(prop, "path", prop.name), prop.display()))
         except Exception as exc:
             app.message("Invalid value: %s" % exc)
 
@@ -527,20 +530,34 @@ class QuickActionsView(ListView):
     def _items(self):
         return [
             ("Set credits / money", lambda a: a.edit_credits()),
-            ("Set XP / wristband level", lambda a: a.edit_xp()),
+            ("Set XP / level", lambda a: a.edit_xp()),
             ("Set skill points (total + unspent)", lambda a: a.edit_skills()),
             ("Set skill tokens", lambda a: a.edit_tokens()),
-            ("MAX credits (set 2,000,000,000)", lambda a: actions.set_credits(a.doc, 2000000000) and a.message("Credits maxed")),
-            ("Unlock all speed traps", lambda a: a.message(actions.unlock_all_speed_traps(a.doc))),
-            ("Unlock all speed zones", lambda a: a.message(actions.unlock_all_speed_zones(a.doc))),
-            ("Unlock all reward boards", lambda a: a.message(actions.unlock_all_reward_boards(a.doc))),
-            ("Discover all bucket-list slots", lambda a: a.message(actions.discover_all_bucket_list_slots(a.doc))),
-            ("Mark all dialogue as seen", lambda a: a.message(actions.mark_all_dialogue_seen(a.doc))),
-            ("Complete all bucket-list challenges", lambda a: a.message(actions.complete_all_bucket_list(a.doc))),
-            ("Set all race results to 1st place", lambda a: a.message(actions.complete_all_race_results(a.doc))),
-            ("Unlock/restore all barn finds (State=2)", lambda a: a.message(actions.unlock_all_barn_finds(a.doc, 2))),
+            ("MAX credits (set 2,000,000,000)",
+             lambda a: (actions.set_credits(a.doc, 2000000000), a.message("Credits maxed"))),
+            ("Unlock all speed traps / danger signs",
+             lambda a: a.message(actions.unlock_all_speed_traps(a.doc))),
+            ("Unlock all speed zones / drift zones",
+             lambda a: a.message(actions.unlock_all_speed_zones(a.doc))),
+            ("Unlock all reward boards",
+             lambda a: a.message(actions.unlock_all_reward_boards(a.doc))),
+            ("Activate all landmarks",
+             lambda a: a.message(actions.activate_all_landmarks(a.doc))),
+            ("Activate/build all festival sites",
+             lambda a: a.message(actions.activate_all_festival_sites(a.doc))),
+            ("Discover all bucket-list slots",
+             lambda a: a.message(actions.discover_all_bucket_list_slots(a.doc))),
+            ("Mark all dialogue as played/seen",
+             lambda a: a.message(actions.mark_all_dialogue_seen(a.doc))),
+            ("Complete all bucket-list challenges",
+             lambda a: a.message(actions.complete_all_bucket_list(a.doc))),
+            ("Set all race results to 1st place",
+             lambda a: a.message(actions.complete_all_race_results(a.doc))),
+            ("Unlock/restore all barn finds (State=2)",
+             lambda a: a.message(actions.unlock_all_barn_finds(a.doc, 2))),
             ("Add car to garage (clone)", lambda a: a.edit_add_car()),
-            ("Reset garage tuning to stock", lambda a: a.message(actions.set_all_garage_tuning_stock(a.doc))),
+            ("Reset garage tuning to stock",
+             lambda a: a.message(actions.set_all_garage_tuning_stock(a.doc))),
         ]
 
     def _select(self, app, item):
@@ -671,7 +688,8 @@ class App:
     # ---- save / integrity ---------------------------------------------
     def integrity_text(self):
         d = self.doc
-        lines = ["Save:      %s / %s / %s" % (d.saveset.title_id, d.saveset.slot, d.saveset.user),
+        lines = ["Game:      %s" % d.game_name,
+                 "Save:      %s / %s / %s" % (d.saveset.title_id, d.saveset.slot, d.saveset.user),
                  "Revision:  0x%x" % d.rev.number,
                  "Commit:    %s" % d.commit.header,
                  ""]
@@ -681,6 +699,11 @@ class App:
             lines += ["  - " + p for p in problems]
         else:
             lines.append("Committed blob verification: OK (all SHA-256 match)")
+        if d.format == "FH3" and d.fh3 is not None:
+            lines.append("")
+            lines.append("FH3 sections (decrypted):")
+            for name in ("profile", "savestate", "binary", "database"):
+                lines.append("  %-9s %d bytes" % (name, len(d.fh3.sections[name])))
         lines.append("")
         lines.append("Pending changes (uncommitted):")
         changed = d.changed_blobs()
@@ -710,9 +733,7 @@ class App:
         self.doc.original = compiled
         self.doc.rev = newrev
         self.doc.commit = self.doc.saveset.read_commit(newrev)
-        if self.doc.playerdb is not None and "PlayerDatabase" in compiled:
-            self.doc.playerdb.mark_clean(compiled["PlayerDatabase"])
-        self.doc.mark_clean()
+        self.doc.mark_clean(compiled)
         self.message("Saved revision 0x%x (%s) — %d blob(s)"
                      % (newrev.number, newrev.path.name, len(changed)))
 
@@ -757,7 +778,7 @@ class App:
             if height < 3:
                 height = 3
             # header
-            title = " FH2 Save Editor — rev 0x%x %s " % (
+            title = " FH2/FH3 Save Editor — rev 0x%x %s " % (
                 self.doc.rev.number, "*DIRTY*" if self.doc.is_dirty() else "")
             attr = curses.A_REVERSE
             try:

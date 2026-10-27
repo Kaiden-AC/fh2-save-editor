@@ -58,6 +58,7 @@ def cmd_list(args):
 def cmd_info(args):
     _sets, s = _resolve(args.root, args.save, getattr(args, 'search', False))
     rev, doc = _load(s, args.rev)
+    print("Game : %s" % doc.game_name)
     print("Save : %s / %s / %s" % (s.title_id, s.slot, s.user))
     print("Rev  : 0x%x  (%s)" % (rev.number, rev.path))
     print("Commit: %s" % doc.commit.header)
@@ -70,6 +71,10 @@ def cmd_info(args):
         x = doc.profile.find("XP")
         print("ProfileData : %d entries; Credits=%s XP=%s" % (
             len(doc.profile), c.get() if c else "?", x.get() if x else "?"))
+    if doc.format == "FH3" and doc.fh3 is not None:
+        print("FH3 sections: %s" % ", ".join(
+            "%s(%d)" % (n, len(doc.fh3.sections[n]))
+            for n in ("profile", "savestate", "binary", "database")))
     if doc.savestate:
         print("SaveState   : %d objects" % len(doc.savestate))
     if doc.playerdb:
@@ -87,13 +92,14 @@ def cmd_dump(args):
     what = args.blob
     if what == "ProfileData":
         for p in doc.profile:
-            print("%-36s %-9s %s" % (p.name, p.type_name, p.display()))
+            path = getattr(p, "path", p.name)
+            print("%-52s %-9s %s" % (path, p.type_name, p.display()))
     elif what == "SaveState":
         for o in doc.savestate.objects:
             print("%-44s [%s] (%d props)" % (o.id, o.type, len(o.props)))
     elif what == "BinarySaveState":
         print(doc.binsave.report())
-    elif what == "PlayerDatabase":
+    elif what in ("PlayerDatabase", "Database"):
         db = doc.playerdb
         for t in db.tables():
             print("%-46s %6d rows" % (t, db.row_count(t)))
@@ -130,6 +136,8 @@ NAMED_ACTIONS = {
     "speedtraps": actions.unlock_all_speed_traps,
     "speedzones": actions.unlock_all_speed_zones,
     "boards": actions.unlock_all_reward_boards,
+    "landmarks": actions.activate_all_landmarks,
+    "festivals": actions.activate_all_festival_sites,
     "bucketslots": actions.discover_all_bucket_list_slots,
     "dialogue": actions.mark_all_dialogue_seen,
     "bucketlist": actions.complete_all_bucket_list,
@@ -177,24 +185,54 @@ def _finish(doc, args):
 def cmd_selftest(args):
     _sets, s = _resolve(args.root, args.save, getattr(args, 'search', False))
     rev, doc = _load(s, args.rev)
+    from .fh3bxml import BxmlDocument
+    from .fh3crypto import cipher
     from .profile import ProfileData
     from .savestate import SaveState
 
     ok = True
-    print("Selftest @ revision 0x%x" % rev.number)
+    print("Selftest @ %s revision 0x%x" % (doc.game_name, rev.number))
     problems = doc.verify()
     print("  commit verify .......... %s" % ("OK" if not problems else problems))
     ok &= not problems
-    if "ProfileData" in doc.original:
-        pd = ProfileData(doc.original["ProfileData"])
-        rt = pd.serialize() == doc.original["ProfileData"]
-        print("  ProfileData round-trip .. %s (%d records)" % (rt, len(pd)))
-        ok &= rt
-    if "SaveState" in doc.original:
-        ss = SaveState(doc.original["SaveState"])
-        rt = ss.serialize() == doc.original["SaveState"]
-        print("  SaveState round-trip .... %s (%d objects)" % (rt, len(ss)))
-        ok &= rt
+
+    if doc.format == "FH3":
+        raw = doc.original["ProfileData"]
+        plain = cipher().decrypt(raw)
+        padding = int.from_bytes(raw[16:20], "little")
+        reenc = cipher().encrypt(plain, iv=raw[:16], padding=padding)
+        print("  TFIT decrypt/encrypt ... %s" % ("OK" if reenc == raw else "MISMATCH"))
+        ok &= reenc == raw
+        rebuilt = doc.fh3.serialize(database=doc.playerdb)
+        print("  ProfileData sections ... %s" % ("OK" if rebuilt == plain else "MISMATCH"))
+        ok &= rebuilt == plain
+        ss_raw = doc.fh3.sections["savestate"]
+        ss_doc = BxmlDocument(ss_raw)
+        ss_rt = ss_doc.serialize() == ss_raw
+        print("  BXML round-trip ........ %s (%d objects, %d strings)" % (
+            ss_rt, len(doc.savestate), len(ss_doc.strings)))
+        ok &= ss_rt
+        vf = doc.original.get("VersionFlags")
+        if vf:
+            vf_plain = cipher().decrypt(vf)
+            vf_rt = cipher().encrypt(
+                vf_plain, iv=vf[:16], padding=int.from_bytes(vf[16:20], "little")
+            ) == vf
+            print("  VersionFlags ........... %s (%s)" % (
+                vf_rt, vf_plain[:4].hex()))
+            ok &= vf_rt
+    else:
+        if "ProfileData" in doc.original:
+            pd = ProfileData(doc.original["ProfileData"])
+            rt = pd.serialize() == doc.original["ProfileData"]
+            print("  ProfileData round-trip .. %s (%d records)" % (rt, len(pd)))
+            ok &= rt
+        if "SaveState" in doc.original:
+            ss = SaveState(doc.original["SaveState"])
+            rt = ss.serialize() == doc.original["SaveState"]
+            print("  SaveState round-trip .... %s (%d objects)" % (rt, len(ss)))
+            ok &= rt
+
     if doc.playerdb:
         try:
             n = doc.playerdb.row_count("Career_Garage")
@@ -224,7 +262,7 @@ def build_parser():
 
     p = argparse.ArgumentParser(
         prog="fh2save",
-        description="Forza Horizon 2 (Xbox One) save editor.",
+        description="Forza Horizon 2/3 (Xbox One) save editor.",
     )
     p.add_argument("--root", default=".",
                    help="folder containing titles/ (default: current directory)")
@@ -242,7 +280,8 @@ def build_parser():
     sp.set_defaults(func=cmd_info)
 
     sp = sub.add_parser("dump", parents=[common], help="dump a blob")
-    sp.add_argument("blob", choices=["ProfileData", "SaveState", "BinarySaveState", "PlayerDatabase"])
+    sp.add_argument("blob", choices=["ProfileData", "SaveState", "BinarySaveState",
+                                     "PlayerDatabase", "Database"])
     sp.set_defaults(func=cmd_dump)
 
     sp = sub.add_parser("set", parents=[common], help="set a well-known value")

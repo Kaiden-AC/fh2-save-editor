@@ -19,7 +19,7 @@ cp -r fh2save "$stage/"
 find "$stage/fh2save" -name '__pycache__' -type d -prune -exec rm -rf {} +
 cp -r packaging "$stage/"
 cp -r docs "$stage/"
-cp README.md AI_USAGE.md LICENSE "$stage/"
+cp README.md AI_USAGE.md THIRD_PARTY_NOTICES.md LICENSE "$stage/"
 tar -czf "$TARBALL" -C "build-$PKGNAME-$PKGVER" "$PKGNAME-$PKGVER"
 rm -rf "build-$PKGNAME-$PKGVER"
 
