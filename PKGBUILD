@@ -1,6 +1,6 @@
 # Maintainer: KaidenAC
 pkgname=fh2save
-pkgver=1.1.1
+pkgver=1.1.2
 pkgrel=1
 pkgdesc="Curses TUI and CLI editor for Forza Horizon 2 and 3 (Xbox One) save files"
 arch=('any')

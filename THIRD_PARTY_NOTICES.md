@@ -29,6 +29,17 @@ this repository, not any third-party key material.
 * **Das, Nenkai, merika, Doliman100** — authors credited on the ProfileData
   binary template.
 
+## Derived progression data
+
+`fh2save/data/fh3_progress.json` contains only game-internal identifiers:
+discovery component/slot names and hashes, bucket-list challenge IDs, career
+event/collection IDs, campaign-slot names and hashes, and completed `Stats`
+counter values.  These were transcribed from a genuine, largely-completed FH3
+save in order to reproduce the game's own progression state.  The file contains
+no account names, XUIDs, keys, credits, garage data or other personal
+information.  The identifiers and counter values describe the game, not any
+individual player.
+
 ## Games and trademarks
 
 Forza, Forza Horizon, Xbox and related marks are trademarks of Microsoft

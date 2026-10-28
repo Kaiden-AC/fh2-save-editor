@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+from . import fh3progression
+
 
 def _is_fh3(doc):
     return getattr(doc, "format", "FH2") == "FH3"
 
 
-# FH3 bucket-list events: 30 in the base game, 7 Blizzard Mountain and 5 Hot
-# Wheels.  The DB uses 1-based challenge IDs.
-FH3_BUCKET_IDS = range(1, 43)
+# FH3 bucket-list challenge IDs live in the binary BucketListChallengeState
+# object (base game 67-96, expansions 97-108); the SQLite BucketListProgress
+# table is not authoritative.
 # The static FH3 career-event catalogue is not stored in the save.  FH2 event
 # IDs go up to 1007, so cover a comfortably wider range for FH3 (including both
-# expansions).  Rows for IDs the game does not define are ignored by the game.
+# expansions) when filling the legacy profile counters.
 FH3_EVENT_ID_MAX = 2000
 FH3_MAX_CREDITS = 999_999_999
 FH3_MAX_LEVEL = 999
@@ -252,8 +254,28 @@ def complete_all_pr_stunts(doc) -> str:
     zones = _complete_stunt_type(doc, "CameraState", "speed_zone_", "9999")
     signs = _complete_stunt_type(doc, "DangerSignState", None, "9999")
     drifts = _complete_stunt_type(doc, "DriftZoneState", None, "999999")
+    if _is_fh3(doc):
+        try:
+            fh3progression.discover_everything(doc)
+            fh3progression.apply_stats(doc)
+        except fh3progression.Fh3ProgressionError:
+            # PR stunts are already written to SaveState; the discovery/stat
+            # bookkeeping is optional and must not undo the action.
+            pass
     return ("Completed %d speed traps, %d speed zones, %d danger signs and "
             "%d drift zones" % (traps, zones, signs, drifts))
+
+
+def discover_everything(doc) -> str:
+    """Mark every known FH3 event, stunt and landmark as discovered."""
+    if not _is_fh3(doc):
+        return "FH3 only"
+    try:
+        added = fh3progression.discover_everything(doc)
+        fh3progression.apply_stats(doc)
+    except fh3progression.Fh3ProgressionError as exc:
+        return "FH3 discovery state: %s" % exc
+    return "Discovered %d additional map entries" % added
 
 
 def unlock_all_reward_boards(doc) -> str:
@@ -318,7 +340,17 @@ def activate_all_festival_sites(doc) -> str:
             if o.id.startswith("CurrencyBucket_Fans_"):
                 _set_obj_prop(doc, o, "Total", str(FH3_MAX_FANS))
                 fans += 1
-        msg += " at level 5"
+        slots = 0
+        intros = 0
+        try:
+            slots = fh3progression.complete_campaign_slots(doc)
+            intros = fh3progression.mark_introductions_done(doc)
+            fh3progression.apply_stats(doc)
+        except fh3progression.Fh3ProgressionError:
+            # The festival-site level itself was already written.
+            pass
+        msg += " at level 5 (%d campaign slots, %d intro flags)" % (
+            slots, intros)
         if fans:
             msg += "; fans = %s" % format(FH3_MAX_FANS, ",")
     return msg
@@ -326,21 +358,14 @@ def activate_all_festival_sites(doc) -> str:
 
 def discover_all_bucket_list_slots(doc) -> str:
     if _is_fh3(doc):
-        if doc.playerdb is None:
-            return "no PlayerDatabase"
-        # The table is empty in a fresh FH3 save, so the old UPDATE did
-        # nothing.  Insert the 42 known challenge IDs instead.
-        for challenge_id in FH3_BUCKET_IDS:
-            doc.playerdb.execute(
-                "INSERT OR IGNORE INTO BucketListProgress "
-                "(ChallengeId, Completed, Attempted, Viewed, CompletedCoop, "
-                "AttemptedCoop, ViewedCoop) VALUES (?,0,1,1,0,0,0)",
-                (challenge_id,),
-            )
-        cur = doc.playerdb.execute(
-            "UPDATE BucketListProgress SET Attempted=1, Viewed=1"
-        )
-        return "Discovered %d bucket-list slots" % cur.rowcount
+        try:
+            n = fh3progression.discover_bucket_lists(doc)
+        except fh3progression.Fh3ProgressionError as exc:
+            return "FH3 bucket-list state: %s" % exc
+        if not n:
+            return "no FH3 bucket-list state"
+        fh3progression.apply_stats(doc)
+        return "Discovered %d bucket-list challenges" % n
     if doc.savestate is None:
         return "no SaveState"
     n = 0
@@ -355,25 +380,20 @@ def discover_all_bucket_list_slots(doc) -> str:
 # PlayerDatabase helpers
 # --------------------------------------------------------------------------
 def complete_all_bucket_list(doc) -> str:
+    if _is_fh3(doc):
+        try:
+            n = fh3progression.complete_bucket_lists(doc)
+        except fh3progression.Fh3ProgressionError as exc:
+            return "FH3 bucket-list state: %s" % exc
+        if not n:
+            return "no FH3 bucket-list state"
+        try:
+            fh3progression.apply_stats(doc)
+        except fh3progression.Fh3ProgressionError:
+            pass
+        return "Completed %d bucket-list challenges (in-game state)" % n
     if doc.playerdb is None:
         return "no PlayerDatabase"
-    if _is_fh3(doc):
-        # BucketListProgress is empty until a challenge is attempted, so use
-        # inserts rather than an UPDATE (which used to be a silent no-op).
-        for challenge_id in FH3_BUCKET_IDS:
-            doc.playerdb.execute(
-                "INSERT INTO BucketListProgress "
-                "(ChallengeId, Completed, Attempted, Viewed, CompletedCoop, "
-                "AttemptedCoop, ViewedCoop) VALUES (?,1,1,1,1,0,0) "
-                "ON CONFLICT(ChallengeId) DO UPDATE SET Completed=1, "
-                "Attempted=1, Viewed=1",
-                (challenge_id,),
-            )
-        cur = doc.playerdb.execute(
-            "UPDATE BucketListProgress SET Completed=1, Attempted=1, Viewed=1"
-        )
-        return "Completed %d bucket-list challenges (IDs 1-%d)" % (
-            cur.rowcount, max(FH3_BUCKET_IDS))
     cur = doc.playerdb.execute(
         "UPDATE BucketListProgress SET Completed=1, Attempted=1, Viewed=1"
     )
@@ -381,39 +401,22 @@ def complete_all_bucket_list(doc) -> str:
 
 
 def complete_all_race_results(doc) -> str:
+    if _is_fh3(doc):
+        # FH3 keeps career results in the binary CareerState object, not in
+        # the (normally empty) Career_EventResults/Career_RaceResults tables.
+        try:
+            n = fh3progression.complete_career(doc)
+        except fh3progression.Fh3ProgressionError as exc:
+            return "FH3 career state: %s" % exc
+        if not n:
+            return "no FH3 career state"
+        try:
+            fh3progression.apply_stats(doc)
+        except fh3progression.Fh3ProgressionError:
+            pass
+        return "Completed %d FH3 race/event results (in-game state)" % n
     if doc.playerdb is None:
         return "no PlayerDatabase"
-    if _is_fh3(doc):
-        # The result tables are empty in a normal FH3 save and the static
-        # event catalogue is not stored in the save, so insert a plausible
-        # 1..N range.  Rows for IDs the game does not define are ignored.
-        for event_id in range(1, FH3_EVENT_ID_MAX + 1):
-            doc.playerdb.execute(
-                "INSERT OR IGNORE INTO Career_EventResults "
-                "(EventId, Place, TargetAchieved, TimesCompleted) "
-                "VALUES (?,1,100,1)",
-                (event_id,),
-            )
-            doc.playerdb.execute(
-                "INSERT OR IGNORE INTO Career_RaceResults "
-                "(RaceId, Place, TargetAchieved, TimesCompleted) "
-                "VALUES (?,1,100,1)",
-                (event_id,),
-            )
-        doc.playerdb.execute(
-            "UPDATE Career_EventResults SET Place=1, TargetAchieved=100, "
-            "TimesCompleted=CASE WHEN TimesCompleted < 1 THEN 1 "
-            "ELSE TimesCompleted END"
-        )
-        doc.playerdb.execute(
-            "UPDATE Career_RaceResults SET Place=1, TargetAchieved=100, "
-            "TimesCompleted=CASE WHEN TimesCompleted < 1 THEN 1 "
-            "ELSE TimesCompleted END"
-        )
-        events = doc.playerdb.row_count("Career_EventResults")
-        races = doc.playerdb.row_count("Career_RaceResults")
-        return ("Completed %d career events and %d races (experimental IDs "
-                "1-%d)" % (events, races, FH3_EVENT_ID_MAX))
     cur = doc.playerdb.execute(
         "UPDATE Career_RaceResults SET Place=1, TargetAchieved=100"
     )
@@ -484,9 +487,17 @@ def max_fh3_progression(doc) -> str:
     mark_all_dialogue_seen(doc)
     complete_all_bucket_list(doc)
     complete_all_race_results(doc)
+    try:
+        fh3progression.discover_everything(doc)
+        # Apply the completed-save counters last so nothing overwrites them.
+        fh3progression.apply_stats(doc)
+    except fh3progression.Fh3ProgressionError:
+        # Everything else was already applied; discovery data being absent or
+        # malformed should not turn the whole preset into a traceback.
+        pass
     return ("FH3 max progression: credits, level %d, skills, all PR stunts, "
-            "boards, festival sites, bucket list and career events"
-            % FH3_MAX_LEVEL)
+            "boards, festival sites, map discovery, bucket list and career "
+            "events" % FH3_MAX_LEVEL)
 
 
 # --------------------------------------------------------------------------

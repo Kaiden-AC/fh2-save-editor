@@ -340,7 +340,12 @@ class Fh3BinaryObject:
 
 
 class Fh3BinaryState:
-    """Read-only view of the FH3 ``binary`` section."""
+    """View of the FH3 ``binary`` section.
+
+    Objects can be read and their ``data`` replaced.  ``serialize`` rebuilds
+    the section, preserving object order, hashes, indices and any trailing
+    bytes so an unmodified document round-trips byte-for-byte.
+    """
 
     def __init__(self, raw: bytes):
         self.raw = raw
@@ -379,9 +384,29 @@ class Fh3BinaryState:
             raise Fh3ProfileError("truncated binary object name")
         return raw[pos:pos + n].decode("utf-8", "replace"), pos + n
 
+    def find(self, object_id):
+        for obj in self.objects:
+            if obj.id == object_id:
+                return obj
+        return None
+
+    def serialize(self) -> bytes:
+        out = bytearray(struct.pack("<I", len(self.objects)))
+        for obj in self.objects:
+            for text in (obj.id, obj.type):
+                encoded = text.encode("utf-8")
+                out += struct.pack("<I", len(encoded))
+                out += encoded
+            out += struct.pack("<II", obj.hash & 0xFFFFFFFF, len(obj.data))
+            out += obj.data
+            out += struct.pack("<i", obj.index)
+        # Preserve any bytes the parser did not consume (future-proofing).
+        out += self.raw[self.end:]
+        return bytes(out)
+
     def report(self) -> str:
         lines = [
-            "FH3 BinarySaveState: %d objects, %d bytes (read-only)"
+            "FH3 BinarySaveState: %d objects, %d bytes"
             % (len(self.objects), len(self.raw)),
             "",
         ]
@@ -431,6 +456,7 @@ class Fh3SaveData:
         data = dict(self.sections)
         data["profile"] = self.profile.serialize()
         data["savestate"] = self.savestate.serialize()
+        data["binary"] = self.binary.serialize()
         if database is not None:
             data["database"] = database.serialize()
         out = bytearray()

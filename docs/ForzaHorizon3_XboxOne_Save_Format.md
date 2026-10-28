@@ -197,7 +197,7 @@ when already present.  An unmodified document serialises byte-for-byte.
 
 ### 2.3 Binary state
 
-The `binary` section is a read-only object dictionary:
+The `binary` section is an object dictionary:
 
 ```
 u32 count
@@ -210,8 +210,9 @@ repeat count:
     i32 index
 ```
 
-The editor lists the objects, their types and sizes.  It does not rewrite this
-section.
+Object order, stored hashes, indices and any unconsumed trailing bytes are
+preserved.  The editor parses the progression objects listed below and
+re-serialises them byte-for-byte when their state has not changed.
 
 ### 2.4 Database
 
@@ -222,9 +223,128 @@ games.  FH3 tables include `Career_Garage`, `BarnFinds`, `BucketListProgress`,
 `Career_RaceResults`, `Career_PurchasedParts`, `ChangeTracking`, and various
 progress/unlock tables.
 
-### 2.5 Progression fields used by the quick actions
+### 2.5 Authoritative progression objects
 
-FH3 splits progression between the BXML save state, the profile bag and SQLite:
+Career, bucket-list, discovery and festival progress is **not** stored in the
+SQLite result tables.  A genuine 95%-complete save has `Career_EventResults`,
+`Career_RaceResults`, `BucketListProgress` and `CareerRaceCollections` empty;
+the authoritative state lives in the binary section and in `Stats` /
+`CompareStats`.  The layouts below were reverse-engineered from that reference
+save; all integers are little-endian.
+
+#### `CareerState`
+
+```
+u32 version (2)
+u32 count
+count × u32                   field 1  (campaign tier counters)
+u32 count
+count × u32                   field 2  (mirror of field 1 in observed saves)
+u32 count
+count × (u32 event, u32 times_completed, u32 best_place)   field 3
+u32 count
+count × (u32 event, u32 times_completed, u32 best_place)   field 4
+u32 count
+count × u32                   field 5  (championship/collection IDs)
+u32 count
+count × u32                   field 6  (related ID list)
+remaining u32s                opaque tail, preserved verbatim
+```
+
+The event IDs in fields 3/4 cover base-game events (`1`–`610`), expansion
+events (`16777217`+, i.e. `0x01000001`+) and championship collections
+(`33554432`+, i.e. `0x02000000`+).
+
+#### `BucketListChallengeState`
+
+```
+u32 version (2)
+u32 count
+count × 14-byte record:
+    u32 challenge_id
+    u32 unknown
+    u8[6] flags        (completed, attempted, viewed, …)
+remaining bytes        second list, preserved verbatim
+```
+
+Base-game challenge IDs are `67`–`96`; Blizzard Mountain and Hot Wheels add
+`97`–`108`.  The reference save also contains a sentinel record with ID
+`0xFFFFFFFF`.
+
+#### `DiscoveryState`
+
+```
+u32 version (1)
+u32 count
+count × entry:
+    u16 flags
+    u32 name_hash
+    u32 name_len + UTF-8 name
+    u8  discovered (1)
+```
+
+Entries are map components (`*_discovery_component`) and numbered slots
+(`slot_N_discovery`).  The reference save has 356 entries.
+
+#### `CampaignSlotsState`
+
+```
+u32 version (1)
+u32 core_count
+core_count × entry:
+    u16 flags (1)
+    u32 name_hash
+    u32 name_len + UTF-8 name       e.g. slot_2_core
+    u8  state                       (1 = expanded)
+    u32 value (1)
+u32 race_count
+race_count × entry:
+    u16 flags (1)
+    u32 name_hash
+    u32 name_len + UTF-8 name       e.g. slot_48_modified_race_collection
+    u32 collection_ref
+remaining bytes                      preserved verbatim
+```
+
+The reference save has 70 core entries (13 with `state = 1`) and 45 race
+entries.  The stored name hashes do **not** match the editor's generic
+`CHashName` helper, so the bundled hash values are used verbatim.
+
+#### `iestate`
+
+```
+u32 version (1)
+u32 count
+count × entry:
+    u32 name_len + UTF-8 name
+    u8  value (1)
+```
+
+This holds tutorial/introduction flags such as `IntroducedANNA`.
+
+#### `Stats`
+
+```
+u32 version (1)
+u32 count
+count × entry:
+    u16 flags
+    u32 name_hash
+    u32 name_len + UTF-8 name
+    u32 value_len + UTF-8 value (decimal string)
+```
+
+`Stats` holds the counters the game uses for records and completion, including
+`TotalUniqueCompleted`, `TotalCompleted`, `TotalDiscovered`,
+`RacesUniqueCompleted`, `BucketListsUniqueCompleted`,
+`CampaignSlotExhibitionsCompleted`, `CampaignSlotChampionshipsCompleted`,
+`TotalFestivalsBuilt/Activated/Upgraded` and `RoadsDiscovered`.  The same
+values are mirrored into the profile's `CompareStats/` bag, including
+`ProgressToFinalShowcase` (100 in the reference save).
+
+### 2.6 Other progression fields used by the quick actions
+
+FH3 also keeps stunt and festival state in the BXML save state:
 
 | Progress | Store | Field(s) |
 | --- | --- | --- |
@@ -234,19 +354,16 @@ FH3 splits progression between the BXML save state, the profile bag and SQLite:
 | Reward boards | BXML `DiscountBoardSaveState` | `State = Collected` |
 | Festival sites | BXML `FestivalSiteState` | `Activated`, `Built`, `Level` (max 5) |
 | Fans | BXML `CurrencyBucket_Fans_*` | `Total` |
-| Bucket-list challenges | SQLite `BucketListProgress` | `ChallengeId` (1–42), `Completed`, `Attempted`, `Viewed` |
-| Career events | SQLite `Career_EventResults` | `EventId`, `Place`, `TargetAchieved`, `TimesCompleted` |
-| Career races | SQLite `Career_RaceResults` | `RaceId`, `Place`, `TargetAchieved`, `TimesCompleted` |
 
-`BucketListProgress`, `Career_EventResults` and `Career_RaceResults` are empty in a
-fresh or partly played save, so the editor **inserts** rows instead of updating them.
-There are 30 base-game bucket-list events plus 7 Blizzard Mountain and 5 Hot Wheels
-events (IDs 1–42).
+The quick actions edit the binary progression objects above, not the empty
+SQLite result tables.  `fh2save/data/fh3_progress.json` contains the
+game-internal identifiers, names, hashes and completed counter values derived
+from the reference save (no account data); see `THIRD_PARTY_NOTICES.md`.
 
-The static FH3 career-event catalogue is not stored in the save. The editor therefore
-uses an experimental ID sweep (1–2000) for `Career_EventResults`/`Career_RaceResults`;
-rows whose IDs the game does not define are ignored. This is best-effort progress, not
-a verified 100% completion table.
+The reference save is a genuine 95%-complete save, not a literal 100% save:
+some championships and DLC events remain incomplete.  Importing its values
+therefore cannot guarantee an exact 100% display in every game build.
+
 
 ---
 

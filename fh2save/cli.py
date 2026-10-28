@@ -144,6 +144,7 @@ NAMED_ACTIONS = {
     "landmarks": actions.activate_all_landmarks,
     "festivals": actions.activate_all_festival_sites,
     "bucketslots": actions.discover_all_bucket_list_slots,
+    "discoverall": actions.discover_everything,
     "dialogue": actions.mark_all_dialogue_seen,
     "bucketlist": actions.complete_all_bucket_list,
     "raceresults": actions.complete_all_race_results,
@@ -212,6 +213,10 @@ def cmd_selftest(args):
         rebuilt = doc.fh3.serialize(database=doc.playerdb)
         print("  ProfileData sections ... %s" % ("OK" if rebuilt == plain else "MISMATCH"))
         ok &= rebuilt == plain
+        from . import fh3progression
+        prog = fh3progression.verify_roundtrip(doc)
+        print("  Progress objects ....... %s" % ("OK" if not prog else "; ".join(prog)))
+        ok &= not prog
         ss_raw = doc.fh3.sections["savestate"]
         ss_doc = BxmlDocument(ss_raw)
         ss_rt = ss_doc.serialize() == ss_raw

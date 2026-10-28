@@ -27,7 +27,7 @@ A ready-to-install Arch/CachyOS package is built from this tree:
 
 ```sh
 ./build-package.sh          # produces fh2save-<version>-<pkgrel>-any.pkg.tar.zst
-sudo pacman -U fh2save-1.1.1-1-any.pkg.tar.zst
+sudo pacman -U fh2save-1.1.2-1-any.pkg.tar.zst
 ```
 
 Then run it from anywhere:
@@ -99,12 +99,13 @@ Sections on the main menu:
   high `PersonalBest`.
 * Unlock all reward boards and landmarks.
 * Build every festival site at **level 5** and raise fans to 10,000,000 (FH3).
-* Discover or complete all bucket-list challenges (FH3 IDs 1–42 are inserted because
-  the table starts empty).
+* Discover or complete all bucket-list challenges.  FH3 keeps these in the binary
+  `BucketListChallengeState` object (the SQLite table is normally empty).
 * Mark all dialogue seen/played.
-* Complete all career events and races.  FH3 does not store the static event catalogue,
-  so this action inserts an **experimental** ID sweep (1–2000) into
-  `Career_EventResults` and `Career_RaceResults`; undefined IDs are ignored by the game.
+* Complete all career events and races.  FH3 keeps these in the binary `CareerState`
+  object, not in `Career_EventResults`/`Career_RaceResults`.
+* Discover all map content (event, stunt and landmark components) and refresh the
+  completion statistics shown in-game.
 * Unlock/restore all barn finds, **add a car to the garage (clone)**, and reset all
   garage tuning to stock.
 
@@ -139,12 +140,12 @@ options may be placed before *or* after the subcommand.
 
 Available `action` names: `maxmoney`, `speedtraps`, `speedzones`, `dangersigns`,
 `driftzones`, `prstunts`, `boards`, `landmarks`, `festivals`, `bucketslots`,
-`dialogue`, `bucketlist`, `raceresults`, `maxprogression`, `barnfinds`,
-`stocktuning`.
+`discoverall`, `dialogue`, `bucketlist`, `raceresults`, `maxprogression`,
+`barnfinds`, `stocktuning`.
 
 `selftest` on an FH3 save checks: commit hashes, TFIT decrypt→encrypt byte equality,
-the four ProfileData sections, BXML round-trip, VersionFlags, the SQLite database and
-the clean-tree state.
+the four ProfileData sections, the binary progression objects, BXML round-trip,
+VersionFlags, the SQLite database and the clean-tree state.
 
 ---
 

@@ -9,13 +9,15 @@ has not been thoroughly tested. It should work, but no guarantee is made. AI-gen
 code can still contain mistakes or omissions.
 
 For FH3, the TFIT decrypt/encrypt round-trip, the profile and BXML round-trips,
-credit/XP/level edits, PR-stunt and festival BXML edits, bucket-list and career-result
-database inserts, and writing a new revision were checked against a copy of a real
-save (including decrypting the result with an independent tool). The career-event
-action is explicitly experimental: FH3 does not store its static event catalogue in
-the save, so the editor inserts a plausible ID range instead of a verified completion
-table. This is still limited testing, not an exhaustive compatibility guarantee across
-game versions or save states.
+credit/XP/level edits, PR-stunt and festival BXML edits, bucket-list and career
+binary edits, and writing a new revision were checked against a copy of a real
+save (including decrypting the result with an independent tool).  Career,
+bucket-list and discovery progress is edited in the binary state objects the game
+actually reads; the bundled identifiers and counter values were derived from a
+genuine, largely-completed save.  That reference is a 95% save rather than a
+literal 100% save, so the displayed completion may not reach exactly 100% in
+every game build.  This is still limited testing, not an exhaustive compatibility
+guarantee across game versions or save states.
 
 The software is provided under the MIT License, "as is", without warranty of any kind,
 express or implied. The author accepts no liability for any damage, loss, or other
